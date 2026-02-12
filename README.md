@@ -208,3 +208,5 @@ Dual-Manager/
 - [Supabase ドキュメント](https://supabase.com/docs)
 
 ##プルリクエストの練習です
+
+##第二回プルリクエストの練習です
