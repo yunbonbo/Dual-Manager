@@ -1,5 +1,12 @@
 <template>
   <main class="dashboard">
+    <!-- 前のページに戻るボタン -->
+    <div class="back-button-wrap">
+      <NuxtLink to="/" class="back-button">
+        ← 前のページに戻る
+      </NuxtLink>
+    </div>
+
     <header class="dashboard__header">
       <h1 class="dashboard__title">予約管理ダッシュボード</h1>
       <p class="dashboard__subtitle">2店舗の予約を時系列で確認・管理</p>
@@ -348,6 +355,25 @@ onMounted(() => {
   min-height: 100vh;
   background: #f5f7fa;
   padding: 24px 16px;
+}
+
+.back-button-wrap {
+  margin-bottom: 16px;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #6b7280;
+  text-decoration: none;
+  min-height: 44px;
+}
+
+.back-button:hover {
+  color: #0d9488;
 }
 
 .dashboard__header {

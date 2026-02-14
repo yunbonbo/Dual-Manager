@@ -1,6 +1,17 @@
 <template>
   <main class="page">
     <section class="page-inner">
+      <!-- 前のページに戻るボタン（ステップ2・3のみ表示） -->
+      <div v-if="currentStep > 1" class="back-button-wrap">
+        <button
+          type="button"
+          class="back-button"
+          @click="handleBack"
+        >
+          ← 前のページに戻る
+        </button>
+      </div>
+
       <!-- ステップナビ -->
       <nav class="stepper">
         <div
@@ -59,7 +70,14 @@
               :class="{ 'shop-card--active': selectedShopId === shop.id }"
               @click="handleSelectShop(shop.id)"
             >
-              <div class="shop-card__icon" />
+              <div class="shop-card__icon">
+                <img
+                  :src="getShopImage(shop.name)"
+                  :alt="shop.name"
+                  class="shop-card__icon-img"
+                  @error="($event.target as HTMLImageElement).style.display='none'"
+                >
+              </div>
               <p class="shop-card__name">
                 {{ shop.name }}
               </p>
@@ -89,7 +107,14 @@
               :class="{ 'menu-card--active': selectedMenuId === menu.id }"
               @click="handleSelectMenu(menu.id)"
             >
-              <div class="menu-card__icon" />
+              <div class="menu-card__icon">
+                <img
+                  :src="getMenuImage(menu)"
+                  :alt="menu.name"
+                  class="menu-card__icon-img"
+                  @error="($event.target as HTMLImageElement).style.display='none'"
+                >
+              </div>
               <div class="menu-card__info">
                 <p class="menu-card__name">
                   {{ menu.name }}
@@ -396,6 +421,7 @@ type Menu = {
   name: string
   duration: number
   price: number
+  display_order?: number
 }
 
 const config = useRuntimeConfig()
@@ -454,7 +480,9 @@ const TIME_SLOT_INTERVAL = 15 // 15分刻み
 
 const filteredMenus = computed(() => {
   if (!selectedShopId.value) return []
-  return menus.value.filter((menu) => menu.shop_id === selectedShopId.value)
+  return menus.value
+    .filter((menu) => menu.shop_id === selectedShopId.value)
+    .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999))
 })
 
 const selectedMenu = computed(() => {
@@ -669,8 +697,8 @@ onMounted(async () => {
         .order("name", { ascending: true }),
       supabase
         .from("menus")
-        .select("id, shop_id, name, duration, price")
-        .order("duration", { ascending: true })
+        .select("id, shop_id, name, duration, price, display_order")
+        .order("display_order", { ascending: true, nullsFirst: false })
     ])
 
     if (shopsResult.error) {
@@ -694,6 +722,25 @@ onMounted(async () => {
     pending.value = false
   }
 })
+
+// 店舗カード用の画像パス（理容室→owner_man01, 美容室→owner_female01）
+const getShopImage = (shopName: string) => {
+  const map: Record<string, string> = {
+    理容室: "/images/owner_man01.png",
+    美容室: "/images/owner_female01.png"
+  }
+  return map[shopName] ?? `/images/shop-${shopName}.png`
+}
+
+// メニューカード用の画像パス（理容室のメニュー→model_man03, 美容室のメニュー→model_female02）
+const getMenuImage = (menu: { shop_id: string }) => {
+  const shop = shops.value.find((s) => s.id === menu.shop_id)
+  const map: Record<string, string> = {
+    理容室: "/images/model_man03.png",
+    美容室: "/images/model_female02.png"
+  }
+  return shop ? (map[shop.name] ?? "/images/menu-default.png") : "/images/menu-default.png"
+}
 
 const handleSelectShop = (shopId: string) => {
   selectedShopId.value = shopId
@@ -745,6 +792,16 @@ const handleNextToStep3 = () => {
   }
 
   currentStep.value = 3
+}
+
+const handleBack = () => {
+  if (currentStep.value === 2) {
+    currentStep.value = 1
+    selectedDate.value = null
+    selectedTime.value = null
+  } else if (currentStep.value === 3) {
+    currentStep.value = 2
+  }
 }
 
 const toggleOptionalFields = () => {
@@ -883,6 +940,27 @@ const handleSubmitReservation = async () => {
   padding: 24px 16px 32px;
 }
 
+.back-button-wrap {
+  margin-bottom: 16px;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.back-button:hover {
+  color: #0d9488;
+}
+
 .stepper {
   display: flex;
   justify-content: space-between;
@@ -977,6 +1055,16 @@ const handleSubmitReservation = async () => {
   height: 64px;
   border-radius: 12px;
   background: #e5f3ff;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shop-card__icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .shop-card__name {
@@ -1010,6 +1098,16 @@ const handleSubmitReservation = async () => {
   height: 56px;
   border-radius: 12px;
   background: #fef3c7;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-card__icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .menu-card__info {
