@@ -1,10 +1,10 @@
 <template>
   <main class="dashboard">
-    <!-- 前のページに戻るボタン -->
-    <div class="back-button-wrap">
-      <NuxtLink to="/" class="back-button">
-        ← 前のページに戻る
-      </NuxtLink>
+    <div class="back-button-wrap dashboard-nav">
+      <NuxtLink to="/" class="back-button"> ← 予約フォーム </NuxtLink>
+      <button type="button" class="logout-button" @click="handleLogout">
+        ログアウト
+      </button>
     </div>
 
     <header class="dashboard__header">
@@ -22,6 +22,148 @@
 
     <!-- 予約一覧 -->
     <div v-else class="dashboard__content">
+      <!-- 予約設定（管理者用） -->
+      <section class="settings-section">
+        <h2 class="settings-section__title">予約設定</h2>
+        <div class="settings-row">
+          <label class="settings-label">
+            当日予約の最低猶予時間（時間）：
+            <span class="settings-hint"
+              >例: 3 = 予約時刻の3時間前までに申し込み可能</span
+            >
+          </label>
+          <div class="settings-input-wrap">
+            <input
+              v-model.number="minHours"
+              type="number"
+              min="0"
+              max="168"
+              class="settings-input"
+              @change="handleSaveMinHours"
+            />
+            <span class="settings-unit">時間</span>
+            <button
+              type="button"
+              class="settings-reload-btn"
+              :disabled="pending"
+              @click="fetchData"
+            >
+              設定を再読み込み
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 定休日ルール -->
+      <section class="settings-section">
+        <h2 class="settings-section__title">定休日ルール</h2>
+        <p class="settings-hint" style="margin-bottom: 12px;">
+          毎週または第N週の曜日を定休日に設定。追加・削除が可能です。
+        </p>
+        <div class="closed-rules-list">
+          <div
+            v-for="rule in closedDayRules"
+            :key="rule.id"
+            class="closed-rule-item"
+          >
+            <span>{{ ruleLabel(rule) }}</span>
+            <button
+              type="button"
+              class="closed-rule-remove"
+              @click="handleRemoveRule(rule.id)"
+            >
+              削除
+            </button>
+          </div>
+        </div>
+        <div class="closed-rule-add">
+          <select v-model="newRuleWeekday" class="closed-rule-select">
+            <option
+              v-for="(label, k) in weekdayLabels"
+              :key="k"
+              :value="Number(k)"
+            >
+              {{ label }}
+            </option>
+          </select>
+          <select v-model="newRuleWeekOfMonth" class="closed-rule-select">
+            <option value="">毎週</option>
+            <option
+              v-for="(label, k) in weekLabels"
+              :key="k"
+              :value="Number(k)"
+            >
+              {{ label }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="closed-rule-add-btn"
+            @click="handleAddRule"
+          >
+            追加
+          </button>
+        </div>
+      </section>
+
+      <!-- 休業日・営業日カレンダー -->
+      <section class="settings-section closed-dates-section">
+        <h2 class="settings-section__title">休業日・営業日の設定</h2>
+        <p class="settings-hint" style="margin-bottom: 12px;">
+          日付をクリックで切り替え：定休日→臨時営業、通常営業→臨時休業
+        </p>
+        <div class="closed-calendar">
+          <div class="closed-calendar__header">
+            <button
+              type="button"
+              class="closed-calendar__nav"
+              @click="closedCalPrevMonth"
+            >
+              ←
+            </button>
+            <p class="closed-calendar__month">
+              {{ closedCalMonth.getFullYear() }}年
+              {{ closedCalMonth.getMonth() + 1 }}月
+            </p>
+            <button
+              type="button"
+              class="closed-calendar__nav"
+              @click="closedCalNextMonth"
+            >
+              →
+            </button>
+          </div>
+          <div class="closed-calendar__weekdays">
+            <div
+              v-for="d in ['日','月','火','水','木','金','土']"
+              :key="d"
+              class="closed-calendar__weekday"
+            >
+              {{ d }}
+            </div>
+          </div>
+          <div class="closed-calendar__grid">
+            <button
+              v-for="cell in closedCalDates"
+              :key="cell.key"
+              type="button"
+              class="closed-calendar__date"
+              :class="{
+                'closed-calendar__date--other': cell.isOtherMonth,
+                'closed-calendar__date--regular': cell.isRegularClosed,
+                'closed-calendar__date--temp-closed': cell.isTempClosed,
+                'closed-calendar__date--temp-open': cell.isTempOpen
+              }"
+              :disabled="cell.isOtherMonth"
+              :title="cell.title"
+              @click="handleCalendarDateClick(cell)"
+            >
+              {{ cell.day }}
+            </button>
+          </div>
+        </div>
+      </section>
+
       <!-- フィルター（店舗・状態） -->
       <div class="filters">
         <select v-model="filterShopId" class="filter-select">
@@ -104,7 +246,7 @@
               />
             </div>
 
-            <!-- 予約状態変更 -->
+            <!-- 予約状態変更・カレンダー -->
             <div class="reservation-card__actions">
               <select
                 :value="reservation.status"
@@ -120,6 +262,14 @@
                 <option value="confirmed">確定</option>
                 <option value="cancelled">キャンセル</option>
               </select>
+              <button
+                type="button"
+                class="reservation-card__ics-btn"
+                title="カレンダーに追加"
+                @click="handleDownloadIcs(reservation)"
+              >
+                .ics
+              </button>
             </div>
           </div>
         </article>
@@ -129,7 +279,8 @@
 </template>
 
 <script setup lang="ts">
-import { createClient } from "@supabase/supabase-js"
+definePageMeta({ middleware: ["auth"] })
+
 import { computed, onMounted, ref } from "vue"
 
 type Shop = {
@@ -141,6 +292,8 @@ type Shop = {
 type Menu = {
   id: string
   name: string
+  duration?: number
+  price?: number
 }
 
 type Reservation = {
@@ -160,21 +313,140 @@ type Reservation = {
   created_at: string
 }
 
-const config = useRuntimeConfig()
+const router = useRouter()
+const { supabase } = useSupabase()
+const { signOut } = useAuth()
+const { downloadIcs } = useIcsDownload()
+const {
+  minHours,
+  fetch: fetchMinHours,
+  save: saveMinHours
+} = useMinHoursSetting()
+const {
+  fetchForMonth: fetchClosedDates,
+  fetchForCalendarView: fetchClosedForCalendar,
+  toggle: toggleClosedDate,
+  isClosed
+} = useClosedDates()
+const {
+  fetchForMonth: fetchOpenDates,
+  fetchForCalendarView: fetchOpenForCalendar,
+  toggle: toggleOpenDate,
+  isOpen
+} = useOpenDates()
+const {
+  rules: closedDayRules,
+  fetch: fetchClosedDayRules,
+  add: addClosedDayRule,
+  remove: removeClosedDayRule,
+  matchesRule,
+  weekdayLabels,
+  weekLabels,
+  ruleLabel
+} = useClosedDayRules()
 
-const supabaseUrl = config.public?.supabaseUrl || ""
-const supabaseAnonKey = config.public?.supabaseAnonKey || ""
+const newRuleWeekday = ref(1)
+const newRuleWeekOfMonth = ref<number | string>( "")
+const closedCalMonth = ref(new Date())
+const closedCalDates = computed(() => {
+  const year = closedCalMonth.value.getFullYear()
+  const month = closedCalMonth.value.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const startDate = new Date(firstDay)
+  startDate.setDate(startDate.getDate() - startDate.getDay())
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    "[Dual-Manager] Supabase の URL または anon key が設定されていません。"
-  )
+  const cells: Array<{
+    key: string
+    date: Date
+    day: number
+    isOtherMonth: boolean
+    isRegularClosed: boolean
+    isTempClosed: boolean
+    isTempOpen: boolean
+    dateStr: string
+    title: string
+  }> = []
+
+  for (let i = 0; i < 42; i++) {
+    const date = new Date(startDate)
+    date.setDate(startDate.getDate() + i)
+    const dateStr = date.toISOString().slice(0, 10)
+    const isOtherMonth = date.getMonth() !== month
+    const matchesClosedRule = matchesRule(date)
+    const inOpenDates = isOpen(dateStr)
+    const inClosedDates = isClosed(dateStr)
+    const isRegularClosed = matchesClosedRule && !inOpenDates
+    const isTempClosed = inClosedDates
+    const isTempOpen = matchesClosedRule && inOpenDates
+
+    let title = ""
+    if (isRegularClosed) title = "定休日（クリックで臨時営業に変更）"
+    else if (isTempOpen) title = "臨時営業（クリックで定休に戻す）"
+    else if (isTempClosed) title = "臨時休業（クリックで解除）"
+    else title = "通常営業（クリックで臨時休業に追加）"
+
+    cells.push({
+      key: dateStr,
+      date,
+      day: date.getDate(),
+      isOtherMonth,
+      isRegularClosed,
+      isTempClosed,
+      isTempOpen,
+      dateStr,
+      title
+    })
+  }
+  return cells
+})
+
+function closedCalPrevMonth() {
+  const d = new Date(closedCalMonth.value)
+  d.setMonth(d.getMonth() - 1)
+  closedCalMonth.value = d
+  fetchClosedForCalendar(d.getFullYear(), d.getMonth() + 1)
+  fetchOpenForCalendar(d.getFullYear(), d.getMonth() + 1)
 }
 
-const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null
+function closedCalNextMonth() {
+  const d = new Date(closedCalMonth.value)
+  d.setMonth(d.getMonth() + 1)
+  closedCalMonth.value = d
+  fetchClosedForCalendar(d.getFullYear(), d.getMonth() + 1)
+  fetchOpenForCalendar(d.getFullYear(), d.getMonth() + 1)
+}
+
+async function handleCalendarDateClick(
+  cell: (typeof closedCalDates.value)[number]
+) {
+  if (cell.isOtherMonth) return
+  if (cell.isRegularClosed) {
+    await toggleOpenDate(cell.dateStr)
+  } else if (cell.isTempOpen) {
+    await toggleOpenDate(cell.dateStr)
+  } else if (cell.isTempClosed) {
+    await toggleClosedDate(cell.dateStr)
+  } else {
+    await toggleClosedDate(cell.dateStr)
+  }
+}
+
+async function handleAddRule() {
+  const week =
+    newRuleWeekOfMonth.value === "" || newRuleWeekOfMonth.value === null
+      ? null
+      : Number(newRuleWeekOfMonth.value)
+  await addClosedDayRule(newRuleWeekday.value, week)
+}
+
+async function handleRemoveRule(id: string) {
+  await removeClosedDayRule(id)
+}
+
+const handleLogout = async () => {
+  await signOut()
+  await router.push("/login")
+}
 
 const shops = ref<Shop[]>([])
 const menus = ref<Menu[]>([])
@@ -221,6 +493,11 @@ const getMenuName = (menuId: string) => {
   return menus.value.find((m) => m.id === menuId)?.name ?? "不明"
 }
 
+// メニュー情報を取得（duration, price 用）
+const getMenu = (menuId: string) => {
+  return menus.value.find((m) => m.id === menuId)
+}
+
 // 状態のラベルを取得
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
@@ -242,6 +519,24 @@ const formatDateTime = (dateString: string) => {
   const weekday = weekdays[date.getDay()]
 
   return `${month}/${day} (${weekday}) ${hours}:${minutes}`
+}
+
+// .ics ダウンロード（カレンダーに追加）
+const handleDownloadIcs = (reservation: Reservation) => {
+  const startAt = new Date(reservation.start_at)
+  const endAt = new Date(reservation.end_at)
+  const shopName = getShopName(reservation.shop_id)
+  const menuName = getMenuName(reservation.menu_id)
+  downloadIcs(
+    {
+      title: `予約: ${shopName} - ${menuName}`,
+      startAt,
+      endAt,
+      description: `${reservation.name} 様`,
+      location: shopName
+    },
+    `reservation-${startAt.getFullYear()}${(startAt.getMonth() + 1).toString().padStart(2, "0")}${startAt.getDate().toString().padStart(2, "0")}.ics`
+  )
 }
 
 // 管理者メモを更新
@@ -292,11 +587,35 @@ const handleUpdateStatus = async (reservationId: string, newStatus: string) => {
     if (reservation) {
       reservation.status = newStatus as "pending" | "confirmed" | "cancelled"
     }
+
+    // 確定・キャンセル時に顧客へメール送信
+    if (newStatus === "confirmed" || newStatus === "cancelled") {
+      const { sendCustomerEmail, isConfigured } = useReservationEmail()
+      if (isConfigured && reservation) {
+        const menu = getMenu(reservation.menu_id)
+        const startAt = new Date(reservation.start_at)
+        const endAt = new Date(reservation.end_at)
+        const duration = menu?.duration ?? Math.round((endAt.getTime() - startAt.getTime()) / 60000)
+        const price = menu?.price ?? 0
+        await sendCustomerEmail({
+          customerName: reservation.name,
+          customerEmail: reservation.email,
+          shopName: getShopName(reservation.shop_id),
+          menuName: getMenuName(reservation.menu_id),
+          datetime: formatDateTime(reservation.start_at),
+          duration,
+          price,
+          status: newStatus as "confirmed" | "cancelled"
+        })
+      }
+    }
   } catch (e) {
     console.error("[Dual-Manager] Unexpected error:", e)
     alert("予期しないエラーが発生しました。")
   }
 }
+
+const handleSaveMinHours = () => saveMinHours(minHours.value)
 
 // データを取得
 const fetchData = async () => {
@@ -312,7 +631,7 @@ const fetchData = async () => {
   try {
     const [shopsResult, menusResult, reservationsResult] = await Promise.all([
       supabase.from("shops").select("id, name, color").order("name"),
-      supabase.from("menus").select("id, name").order("name"),
+      supabase.from("menus").select("id, name, duration, price").order("name"),
       supabase
         .from("reservations")
         .select("*")
@@ -338,6 +657,17 @@ const fetchData = async () => {
     shops.value = shopsResult.data ?? []
     menus.value = menusResult.data ?? []
     reservations.value = (reservationsResult.data ?? []) as Reservation[]
+
+    await fetchMinHours()
+    await fetchClosedDayRules()
+    await fetchClosedForCalendar(
+      closedCalMonth.value.getFullYear(),
+      closedCalMonth.value.getMonth() + 1
+    )
+    await fetchOpenForCalendar(
+      closedCalMonth.value.getFullYear(),
+      closedCalMonth.value.getMonth() + 1
+    )
   } catch (e) {
     error.value = "failed"
   } finally {
@@ -359,6 +689,27 @@ onMounted(() => {
 
 .back-button-wrap {
   margin-bottom: 16px;
+}
+
+.dashboard-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logout-button {
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #6b7280;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  color: #b91c1c;
+  border-color: #fecaca;
 }
 
 .back-button {
@@ -412,6 +763,237 @@ onMounted(() => {
 .dashboard__content {
   max-width: 800px;
   margin: 0 auto;
+}
+
+/* 予約設定 */
+.settings-section {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+  border: 1px solid #e5e7eb;
+}
+
+.settings-section__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #1f2937;
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-label {
+  font-size: 14px;
+  color: #374151;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: normal;
+}
+
+.settings-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-input {
+  width: 80px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.settings-unit {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.settings-reload-btn {
+  margin-left: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #0d9488;
+  background: transparent;
+  border: 1px solid #0d9488;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.settings-reload-btn:hover:not(:disabled) {
+  background: #0d9488;
+  color: #fff;
+}
+
+.settings-reload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 臨時休業日カレンダー */
+.closed-dates-section .closed-calendar {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.closed-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.closed-calendar__month {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.closed-calendar__nav {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.closed-calendar__nav:hover {
+  color: #0d9488;
+}
+
+.closed-calendar__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.closed-calendar__weekday {
+  text-align: center;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.closed-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.closed-calendar__date {
+  aspect-ratio: 1;
+  border: none;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1f2937;
+  transition: all 0.2s;
+}
+
+.closed-calendar__date:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.closed-calendar__date--other {
+  background: transparent;
+  color: #d1d5db;
+  cursor: default;
+}
+
+.closed-calendar__date--regular {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.closed-calendar__date--temp-closed {
+  background: #fecaca;
+  color: #b91c1c;
+}
+
+.closed-calendar__date--temp-closed:hover {
+  background: #fca5a5;
+}
+
+.closed-calendar__date--temp-open {
+  background: #bbf7d0;
+  color: #15803d;
+}
+
+.closed-calendar__date--temp-open:hover {
+  background: #86efac;
+}
+
+/* 定休日ルール */
+.closed-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.closed-rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.closed-rule-remove {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #b91c1c;
+  background: transparent;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.closed-rule-remove:hover {
+  background: #fef2f2;
+}
+
+.closed-rule-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.closed-rule-select {
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.closed-rule-add-btn {
+  padding: 6px 12px;
+  font-size: 14px;
+  color: #fff;
+  background: #0d9488;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.closed-rule-add-btn:hover {
+  background: #0f766e;
 }
 
 /* フィルター */
@@ -565,7 +1147,23 @@ onMounted(() => {
 
 .reservation-card__actions {
   display: flex;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-end;
+}
+
+.reservation-card__ics-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #0d9488;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.reservation-card__ics-btn:hover {
+  background: #ccfbf1;
 }
 
 .reservation-card__status-select {

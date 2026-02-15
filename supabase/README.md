@@ -60,3 +60,14 @@ AND shop_id = (SELECT id FROM public.shops WHERE name = '理容室');
 - シミ消しあて放題 60分 3500円
 
 既存メニューの並び順も関連性の高い順に更新されます。
+
+## 休業日・営業日の設定
+
+- **closed_dates.sql**: 臨時休業日テーブル
+- **add_closed_day_rules.sql**: 定休日ルール・臨時営業日テーブル
+
+定休日ルール（毎週月曜、第2火曜など）の追加・削除、臨時休業・臨時営業の設定はダッシュボードのカレンダーと定休日ルールセクションから行えます。
+
+## ユーザー側キャンセル（cancel_token）
+
+`add_cancel_token.sql` を実行すると `reservations` テーブルに `cancel_token` カラムが追加されます。予約確認メールのリンクから顧客がキャンセルできるようになります。

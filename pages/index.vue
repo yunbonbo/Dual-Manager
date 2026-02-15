@@ -1,8 +1,11 @@
 <template>
   <main class="page">
     <section class="page-inner">
-      <!-- 前のページに戻るボタン（ステップ2・3のみ表示） -->
-      <div v-if="currentStep > 1" class="back-button-wrap">
+      <div class="page-header">
+        <NuxtLink to="/dashboard" class="admin-link">管理者</NuxtLink>
+      </div>
+      <!-- 前のページに戻るボタン（ステップ2・3のみ表示、成功時は非表示） -->
+      <div v-if="currentStep > 1 && currentStep < 4" class="back-button-wrap">
         <button
           type="button"
           class="back-button"
@@ -12,8 +15,8 @@
         </button>
       </div>
 
-      <!-- ステップナビ -->
-      <nav class="stepper">
+      <!-- ステップナビ（成功時は非表示） -->
+      <nav v-if="currentStep < 4" class="stepper">
         <div
           class="step"
           :class="{
@@ -285,6 +288,18 @@
               />
             </div>
 
+            <!-- 事前支払い（Stripe 設定時のみ表示） -->
+            <div v-if="stripeEnabled" class="form__field form__field--checkbox">
+              <label class="form__label form__label--checkbox">
+                <input
+                  v-model="paymentInAdvance"
+                  type="checkbox"
+                  class="form__checkbox"
+                />
+                事前にカードで支払う（¥{{ selectedMenuPrice?.toLocaleString() }}）
+              </label>
+            </div>
+
             <!-- 任意項目（アコーディオン） -->
             <div class="accordion">
               <button
@@ -401,12 +416,39 @@
           </button>
         </footer>
       </template>
+
+      <!-- ステップ4: 予約完了 -->
+      <template v-else-if="currentStep === 4">
+        <section class="block block--success">
+          <h2 class="block__title block__title--success">予約が確定しました！</h2>
+          <p class="success-message">ありがとうございます。</p>
+          <div v-if="lastReservation" class="success-detail">
+            <p>{{ lastReservation.shopName }} / {{ lastReservation.menuName }}</p>
+            <p>{{ lastReservation.datetime }}</p>
+          </div>
+          <div class="success-actions">
+            <button
+              type="button"
+              class="footer__button footer__button--secondary"
+              @click="handleDownloadIcs"
+            >
+              カレンダーに追加（.ics）
+            </button>
+            <button
+              type="button"
+              class="footer__button"
+              @click="handleBackToTop"
+            >
+              トップに戻る
+            </button>
+          </div>
+        </section>
+      </template>
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
-import { createClient } from "@supabase/supabase-js"
 import { computed, onMounted, ref, watch } from "vue"
 
 type Shop = {
@@ -424,22 +466,16 @@ type Menu = {
   display_order?: number
 }
 
-const config = useRuntimeConfig()
-
-const supabaseUrl = config.public?.supabaseUrl || ""
-const supabaseAnonKey = config.public?.supabaseAnonKey || ""
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    "[Dual-Manager] Supabase の URL または anon key が設定されていません。" +
-      "nuxt.config.ts と .env を確認してください."
-  )
-}
-
-const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null
+const { supabase } = useSupabase()
+const { downloadIcs } = useIcsDownload()
+const { minHours, fetch: fetchMinHours, getMinBookingTimestamp } =
+  useMinHoursSetting()
+const { fetchForCalendarView: fetchClosedDates, isClosed } = useClosedDates()
+const {
+  fetchForCalendarView: fetchOpenDates,
+  isOpen
+} = useOpenDates()
+const { fetch: fetchClosedDayRules, matchesRule } = useClosedDayRules()
 
 const shops = ref<Shop[]>([])
 const menus = ref<Menu[]>([])
@@ -452,6 +488,11 @@ const selectedTime = ref<string | null>(null)
 
 const pending = ref(false)
 const error = ref<string | null>(null)
+
+// 予約済み時間のグレーアウト用：選択中の日付・店舗の既存予約
+const reservationsForSelectedDate = ref<
+  Array<{ start_at: string; end_at: string; status: string }>
+>([])
 
 // フォームデータ
 const formData = ref({
@@ -467,6 +508,20 @@ const formData = ref({
 
 const showOptionalFields = ref(false)
 const isSubmitting = ref(false)
+const paymentInAdvance = ref(false)
+
+const config = useRuntimeConfig()
+const stripeEnabled = computed(() => !!config.public?.stripeEnabled)
+
+// 予約完了後の表示用（ステップ4）
+const lastReservation = ref<{
+  shopName: string
+  menuName: string
+  datetime: string
+  startAt: Date
+  endAt: Date
+  cancelUrl?: string
+} | null>(null)
 
 // カレンダー用
 const currentMonth = ref(new Date())
@@ -609,7 +664,7 @@ const calendarDates = computed(() => {
   return dates
 })
 
-// 日付が選択可能かチェック（月曜日と第2・第3火曜日は不可）
+// 日付が選択可能かチェック（定休日・臨時休業日・猶予時間内は不可）
 function isDateSelectable(date: Date): boolean {
   // 過去の日付は選択不可
   const today = new Date()
@@ -619,23 +674,19 @@ function isDateSelectable(date: Date): boolean {
 
   if (checkDate < today) return false
 
-  const dayOfWeek = date.getDay()
+  // 定休日ルールに該当し、かつ臨時営業でない場合は選択不可
+  const dateStr = date.toISOString().slice(0, 10)
+  if (matchesRule(date) && !isOpen(dateStr)) return false
 
-  // 月曜日（1）は選択不可
-  if (dayOfWeek === 1) return false
+  // 臨時休業日は選択不可
+  if (isClosed(dateStr)) return false
 
-  // 火曜日（2）の場合、第2・第3火曜日かチェック
-  if (dayOfWeek === 2) {
-    const dayOfMonth = date.getDate()
-    // 第2火曜日: 8〜14日の範囲
-    // 第3火曜日: 15〜21日の範囲
-    if (
-      (dayOfMonth >= 8 && dayOfMonth <= 14) ||
-      (dayOfMonth >= 15 && dayOfMonth <= 21)
-    ) {
-      return false
-    }
-  }
+  // 猶予時間チェック：その日の最終スロット（17:00）が「今からN時間後」より前なら
+  // 全時間帯が予約不可なので日付も選択不可
+  const lastSlotStart = new Date(date)
+  lastSlotStart.setHours(LAST_ACCEPTANCE_HOUR, 0, 0, 0)
+  const minBookingTs = getMinBookingTimestamp()
+  if (lastSlotStart.getTime() < minBookingTs) return false
 
   return true
 }
@@ -643,6 +694,13 @@ function isDateSelectable(date: Date): boolean {
 // 利用可能な時間スロットを生成（15分刻み、9:00〜17:00）
 const availableTimeSlots = computed(() => {
   if (!selectedDate.value || !selectedMenu.value) return []
+
+  const now = new Date()
+
+  // キャンセル以外の既存予約（時間重複チェック用）
+  const activeReservations = reservationsForSelectedDate.value.filter(
+    (r) => r.status !== "cancelled"
+  )
 
   const slots: Array<{
     value: string
@@ -657,16 +715,38 @@ const availableTimeSlots = computed(() => {
         .toString()
         .padStart(2, "0")}`
 
-      // メニューの所要時間を考慮して、終了時刻が営業時間内かチェック
-      const endTime = new Date(selectedDate.value)
+      const slotStart = new Date(selectedDate.value)
       const [startHour, startMinute] = timeString.split(":").map(Number)
-      endTime.setHours(startHour ?? 0, startMinute ?? 0, 0, 0)
-      endTime.setMinutes(
-        endTime.getMinutes() + (selectedMenu.value?.duration ?? 0)
+      slotStart.setHours(startHour ?? 0, startMinute ?? 0, 0, 0)
+
+      const slotEnd = new Date(slotStart)
+      slotEnd.setMinutes(
+        slotEnd.getMinutes() + (selectedMenu.value?.duration ?? 0)
       )
 
-      const endHour = endTime.getHours()
-      const isAvailable = endHour <= BUSINESS_END_HOUR
+      // 終了時刻が営業時間内か
+      let isAvailable = slotEnd.getHours() <= BUSINESS_END_HOUR
+
+      // 全日付共通：最低猶予時間（例: 48時間前まで）をチェック
+      // 予約開始時刻が「今からN時間後」より前なら選択不可
+      if (isAvailable) {
+        const minBookingTs = getMinBookingTimestamp()
+        if (slotStart.getTime() < minBookingTs) {
+          isAvailable = false
+        }
+      }
+
+      // 既存予約との重複チェック
+      if (isAvailable) {
+        for (const res of activeReservations) {
+          const resStart = new Date(res.start_at)
+          const resEnd = new Date(res.end_at)
+          if (slotStart < resEnd && slotEnd > resStart) {
+            isAvailable = false
+            break
+          }
+        }
+      }
 
       slots.push({
         value: timeString,
@@ -713,6 +793,8 @@ onMounted(async () => {
     shops.value = shopsResult.data ?? []
     menus.value = menusResult.data ?? []
 
+    await fetchMinHours()
+
     if (!selectedShopId.value && shops.value.length > 0 && shops.value[0]) {
       selectedShopId.value = shops.value[0].id
     }
@@ -722,6 +804,58 @@ onMounted(async () => {
     pending.value = false
   }
 })
+
+// 日付を選択したときに settings を再取得（最新の猶予時間を反映）
+watch(
+  selectedDate,
+  async (date) => {
+    if (!date || !supabase) return
+    await fetchMinHours()
+  }
+)
+
+// カレンダー表示月が変わったときに休業日・営業日データを取得
+watch(
+  [() => currentStep.value, currentMonth],
+  async ([step, month]) => {
+    if (step !== 2 || !month) return
+    const m = month as Date
+    await fetchClosedDayRules()
+    await fetchClosedDates(m.getFullYear(), m.getMonth() + 1)
+    await fetchOpenDates(m.getFullYear(), m.getMonth() + 1)
+  },
+  { immediate: true }
+)
+
+// 日付・店舗が変わったら、その日の既存予約を取得（予約済み時間のグレーアウト用）
+watch(
+  [selectedDate, selectedShopId],
+  async ([date, shopId]) => {
+    if (!supabase || !date || !shopId) {
+      reservationsForSelectedDate.value = []
+      return
+    }
+    const d = date as Date
+    const startOfDay = new Date(d)
+    startOfDay.setHours(0, 0, 0, 0)
+    const endOfDay = new Date(d)
+    endOfDay.setHours(23, 59, 59, 999)
+
+    const { data } = await supabase
+      .from("reservations")
+      .select("start_at, end_at, status")
+      .eq("shop_id", shopId)
+      .gte("start_at", startOfDay.toISOString())
+      .lte("start_at", endOfDay.toISOString())
+
+    reservationsForSelectedDate.value = (data ?? []) as Array<{
+      start_at: string
+      end_at: string
+      status: string
+    }>
+  },
+  { immediate: true }
+)
 
 // 店舗カード用の画像パス（理容室→owner_man01, 美容室→owner_female01）
 const getShopImage = (shopName: string) => {
@@ -777,17 +911,28 @@ const nextMonth = () => {
 }
 
 const handleSelectDate = (date: Date) => {
+  if (!isDateSelectable(date)) return
   selectedDate.value = new Date(date)
   selectedTime.value = null // 日付変更時は時間をリセット
 }
 
 const handleSelectTime = (time: string) => {
+  const slot = availableTimeSlots.value.find((s) => s.value === time)
+  if (!slot?.isAvailable) return
   selectedTime.value = time
 }
 
 const handleNextToStep3 = () => {
   if (!selectedDate.value || !selectedTime.value) {
     alert("日付と時間を選択してください。")
+    return
+  }
+  const slot = availableTimeSlots.value.find(
+    (s) => s.value === selectedTime.value
+  )
+  if (!slot?.isAvailable) {
+    alert("選択された時間は現在予約できません。別の時間を選んでください。")
+    selectedTime.value = null
     return
   }
 
@@ -870,6 +1015,34 @@ const handleSubmitReservation = async () => {
           )}`
         : null
 
+    // 事前支払い（Stripe）の場合
+    if (paymentInAdvance.value && stripeEnabled.value) {
+      const res = await $fetch<{ url: string }>("/api/stripe/create-checkout", {
+        method: "POST",
+        body: {
+          shop_id: selectedShopId.value,
+          menu_id: selectedMenuId.value,
+          start_at: startAt.toISOString(),
+          end_at: endAt.toISOString(),
+          name: formData.value.name.trim(),
+          name_kana: formData.value.name_kana.trim(),
+          tel: formData.value.tel.trim(),
+          email: formData.value.email.trim(),
+          gender: formData.value.gender || null,
+          birthday,
+          shop_name: selectedShopName.value,
+          menu_name: selectedMenuName.value,
+          price: selectedMenuPrice.value ?? 0
+        }
+      })
+      if (res?.url) {
+        window.location.href = res.url
+        return
+      }
+    }
+
+    const cancelToken = crypto.randomUUID()
+
     // Supabase に予約を保存
     const { data, error: insertError } = await supabase
       .from("reservations")
@@ -885,7 +1058,8 @@ const handleSubmitReservation = async () => {
         gender: formData.value.gender || null,
         birthday: birthday,
         admin_memo: "",
-        status: "pending"
+        status: "pending",
+        cancel_token: cancelToken
       })
       .select()
 
@@ -897,32 +1071,99 @@ const handleSubmitReservation = async () => {
       return
     }
 
-    // 成功メッセージ
-    alert("予約が確定しました！ありがとうございます。")
+    // メール送信（EmailJS 設定時のみ）
+    const { sendCustomerEmail, sendAdminEmail, isConfigured } =
+      useReservationEmail()
+    const shopName = selectedShopName.value
+    const menuName = selectedMenuName.value
+    const duration = selectedMenuDuration.value
+    const price = selectedMenuPrice.value
+    const datetime = formattedDateTime.value
 
-    // フォームをリセットして最初のステップに戻る
-    formData.value = {
-      name: "",
-      name_kana: "",
-      tel: "",
-      email: "",
-      gender: "",
-      birthday_year: "",
-      birthday_month: "",
-      birthday_day: ""
+    if (import.meta.dev) {
+      console.log("[Dual-Manager] メール送信 isConfigured:", isConfigured)
     }
-    selectedShopId.value = null
-    selectedMenuId.value = null
-    selectedDate.value = null
-    selectedTime.value = null
-    currentStep.value = 1
-    showOptionalFields.value = false
+    if (isConfigured) {
+      const cancelUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/cancel?token=${cancelToken}`
+          : ""
+      const params = {
+        customerName: formData.value.name.trim(),
+        customerEmail: formData.value.email.trim(),
+        shopName,
+        menuName,
+        datetime,
+        duration,
+        price,
+        cancelUrl,
+        status: "pending" as const
+      }
+      await Promise.all([
+        sendCustomerEmail(params),
+        sendAdminEmail(params)
+      ])
+    }
+
+    // 予約完了画面（ステップ4）へ
+    const cancelUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/cancel?token=${cancelToken}`
+        : ""
+    lastReservation.value = {
+      shopName,
+      menuName,
+      datetime,
+      startAt: new Date(selectedDate.value!.getFullYear(), selectedDate.value!.getMonth(), selectedDate.value!.getDate(), parseInt(selectedTime.value!.split(":")[0], 10), parseInt(selectedTime.value!.split(":")[1], 10)),
+      endAt: new Date(selectedDate.value!.getFullYear(), selectedDate.value!.getMonth(), selectedDate.value!.getDate(), parseInt(selectedTime.value!.split(":")[0], 10), parseInt(selectedTime.value!.split(":")[1], 10) + duration),
+      cancelUrl: cancelUrl || undefined
+    }
+    currentStep.value = 4
   } catch (e) {
     console.error("[Dual-Manager] Unexpected error:", e)
     alert("予期しないエラーが発生しました。時間をおいて再度お試しください。")
   } finally {
     isSubmitting.value = false
   }
+}
+
+function handleDownloadIcs() {
+  const r = lastReservation.value
+  if (!r) return
+  const title = `予約: ${r.shopName} - ${r.menuName}`
+  const desc = r.cancelUrl
+    ? `キャンセルはこちら: ${r.cancelUrl}`
+    : undefined
+  downloadIcs(
+    {
+      title,
+      startAt: r.startAt,
+      endAt: r.endAt,
+      description: desc,
+      location: r.shopName
+    },
+    `reservation-${r.startAt.getFullYear()}${(r.startAt.getMonth() + 1).toString().padStart(2, "0")}${r.startAt.getDate().toString().padStart(2, "0")}.ics`
+  )
+}
+
+function handleBackToTop() {
+  lastReservation.value = null
+  formData.value = {
+    name: "",
+    name_kana: "",
+    tel: "",
+    email: "",
+    gender: "",
+    birthday_year: "",
+    birthday_month: "",
+    birthday_day: ""
+  }
+  selectedShopId.value = null
+  selectedMenuId.value = null
+  selectedDate.value = null
+  selectedTime.value = null
+  currentStep.value = 1
+  showOptionalFields.value = false
 }
 </script>
 
@@ -938,6 +1179,22 @@ const handleSubmitReservation = async () => {
   width: 100%;
   max-width: 420px;
   padding: 24px 16px 32px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.admin-link {
+  font-size: 12px;
+  color: #9ca3af;
+  text-decoration: none;
+}
+
+.admin-link:hover {
+  color: #0d9488;
 }
 
 .back-button-wrap {
@@ -1310,6 +1567,24 @@ const handleSubmitReservation = async () => {
   color: #9ca3af;
 }
 
+.form__field--checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.form__label--checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.form__checkbox {
+  width: 18px;
+  height: 18px;
+}
+
 /* 誕生日選択 */
 .birthday-selects {
   display: grid;
@@ -1428,5 +1703,46 @@ const handleSubmitReservation = async () => {
   background: #d1d5db;
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.footer__button--secondary {
+  background: #f0fdfa;
+  color: #0d9488;
+  border: 1px solid #99f6e4;
+}
+
+.footer__button--secondary:hover {
+  background: #ccfbf1;
+}
+
+/* 予約完了画面 */
+.block--success {
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.block__title--success {
+  font-size: 20px;
+  color: #0d9488;
+  margin-bottom: 8px;
+}
+
+.success-message {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
+.success-detail {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.success-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 </style>
