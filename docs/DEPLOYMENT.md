@@ -76,22 +76,65 @@ git push -u origin main
 4. **Save** をクリック
 5. **Deployments** タブ → 最新のデプロイの **⋯** → **Redeploy** で再デプロイ（環境変数を反映）
 
+> ⚠️ 「Supabase の URL または anon key が設定されていません」と表示される場合は、**[docs/VERCEL_ENV_CHECK.md](VERCEL_ENV_CHECK.md)** で確認手順を参照してください。
+
 ---
 
 ## 5. Stripe Webhook を設定
 
-1. デプロイ後の URL を確認（例: `https://dual-manager-abc123.vercel.app`）
-2. Stripe ダッシュボード → **Developers** → **Webhooks** → **Add endpoint**
-3. **Endpoint URL** に以下を入力：
-   ```
-   https://dual-manager-abc123.vercel.app/api/stripe/webhook
-   ```
-   ※実際の URL に置き換えてください
-4. イベント `checkout.session.completed` を選択
-5. **Add endpoint** をクリック
-6. 表示される **Signing secret**（`whsec_...`）をコピー
-7. Vercel の **Settings** → **Environment Variables** に `STRIPE_WEBHOOK_SECRET` を追加（または更新）
-8. 再度 **Redeploy** して反映
+### ステップ A: Vercel の URL を確認
+
+1. ブラウザで [vercel.com](https://vercel.com) を開く
+2. ログインして、**Dual-Manager** プロジェクトをクリック
+3. 画面上部の **Domains** またはデプロイ一覧で、表示されている URL を確認  
+   例: `https://dual-manager-bwmfbgds7-yuki-matsumuras-projects.vercel.app`
+4. この URL の末尾に **`/api/stripe/webhook`** を付けたものが Webhook 用 URL です  
+   例: `https://dual-manager-bwmfbgds7-yuki-matsumuras-projects.vercel.app/api/stripe/webhook`
+
+> ⚠️ **重要**: ルート（`/`）だけでなく、必ず `/api/stripe/webhook` まで含めます。
+
+---
+
+### ステップ B: Stripe で Webhook を作成
+
+1. ブラウザで [dashboard.stripe.com](https://dashboard.stripe.com) を開く
+2. ログインする（右上が **サンドボックス** になっていることを確認）
+3. 左上の **「Developers」**（開発者）をクリック
+4. 左メニューで **「Webhooks」** をクリック
+5. **「Add endpoint」**（エンドポイントを追加）ボタンをクリック
+6. **「イベントを選択」** 画面で：
+   - 一覧から **「Checkout」** をクリックして展開
+   - **`checkout.session.completed`** にチェックを入れる
+   - 右下の **「続行」** をクリック
+7. **「送信先のタイプを選択」** で **「Webhook エンドポイント」** を選び **「続行」**
+8. **「Endpoint URL」** に、ステップ A で確認した URL を入力  
+   例: `https://dual-manager-bwmfbgds7-yuki-matsumuras-projects.vercel.app/api/stripe/webhook`
+9. **「エンドポイントを追加」** をクリック
+
+---
+
+### ステップ C: Signing secret を Vercel に登録
+
+1. Webhook 作成後、**「送信先の詳細」** 画面が開く
+2. **「署名シークレット」**（Signing secret）の横にある **コピーアイコン** をクリック  
+   値は `whsec_...` で始まります
+3. 新しいタブで [vercel.com](https://vercel.com) を開く
+4. **Dual-Manager** プロジェクト → **Settings** → **Environment Variables**
+5. **「Add New」** → **「Environment Variable」** をクリック
+6. **Name**: `STRIPE_WEBHOOK_SECRET`
+7. **Value**: コピーした `whsec_...` を貼り付け（引用符は付けない）
+8. **Save** をクリック
+9. **Deployments** タブ → 最新デプロイの **⋯** → **Redeploy** で再デプロイ
+
+---
+
+### 既に Webhook を作成済みの場合
+
+画像の Endpoint URL が `https://...vercel.app/` のみで、`/api/stripe/webhook` が付いていない場合は誤りです。
+
+1. Stripe の Webhook 詳細で **「送信先を編集」** をクリック
+2. **Endpoint URL** を `https://あなたのURL.vercel.app/api/stripe/webhook` に修正
+3. 保存する
 
 ---
 
