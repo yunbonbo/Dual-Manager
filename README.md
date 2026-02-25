@@ -190,13 +190,23 @@ npm install
 NUXT_PUBLIC_SUPABASE_URL="https://xxxx.supabase.co"
 NUXT_PUBLIC_SUPABASE_ANON_KEY="xxxxxxxxxxxxxxxx"
 
-# メール通知（EmailJS）※任意
+# メール通知 ※いずれかを設定
+# Brevo（推奨・Vercel で届く）: docs/BREVO_SETUP.md
+BREVO_API_KEY=""
+BREVO_SENDER_EMAIL=""
+# Gmail SMTP: docs/SMTP_SETUP.md
+SMTP_USER=""
+SMTP_PASS=""
+# Resend（ドメイン認証必須）: docs/RESEND_SETUP.md
+RESEND_API_KEY=""
+NUXT_PUBLIC_EMAIL_ENABLED="true"
+# EmailJS: docs/EMAILJS_SETUP.md
 NUXT_PUBLIC_EMAILJS_PUBLIC_KEY=""
 NUXT_PUBLIC_EMAILJS_SERVICE_ID=""
 NUXT_PUBLIC_EMAILJS_TEMPLATE_CUSTOMER=""
 NUXT_PUBLIC_EMAILJS_TEMPLATE_ADMIN=""
 NUXT_PUBLIC_ADMIN_EMAIL=""
-EMAILJS_PRIVATE_KEY=""  # サーバー送信用（届きやすくなる）
+EMAILJS_PRIVATE_KEY=""
 
 # オンライン決済（Stripe）※任意
 STRIPE_SECRET_KEY=""
@@ -250,9 +260,11 @@ npm run dev
 
 ## 📧 メール通知・ユーザーキャンセル
 
-- **EmailJS**: 予約申込時（顧客確認・管理者通知）、確定・キャンセル時にメール送信
+- **Brevo**（推奨）: Vercel で確実に届く。セットアップ: [docs/BREVO_SETUP.md](docs/BREVO_SETUP.md)
+- **Gmail SMTP**: ドメイン不要。セットアップ: [docs/SMTP_SETUP.md](docs/SMTP_SETUP.md)
+- **Resend**: ドメイン認証必須。セットアップ: [docs/RESEND_SETUP.md](docs/RESEND_SETUP.md)
+- **EmailJS**: 代替。セットアップ: [docs/EMAILJS_SETUP.md](docs/EMAILJS_SETUP.md)
 - **ユーザー側キャンセル**: 予約確認メールのリンクから `/cancel?token=xxx` でキャンセル可能
-- セットアップ: [docs/EMAILJS_SETUP.md](docs/EMAILJS_SETUP.md)
 - **メールが届かない場合**: [docs/SETUP_EMAIL_AND_CALENDAR.md](docs/SETUP_EMAIL_AND_CALENDAR.md) を参照
 
 ## 📅 カレンダー連携

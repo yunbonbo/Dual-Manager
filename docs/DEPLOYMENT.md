@@ -72,7 +72,18 @@ git push -u origin main
 | `NUXT_PUBLIC_EMAILJS_TEMPLATE_CUSTOMER` | （設定している場合） |
 | `NUXT_PUBLIC_EMAILJS_TEMPLATE_ADMIN` | （設定している場合） |
 | `NUXT_PUBLIC_ADMIN_EMAIL` | （設定している場合） |
-| `EMAILJS_PRIVATE_KEY` | （メール送信用・設定している場合） |
+| `EMAILJS_PRIVATE_KEY` | （EmailJS 使用時） |
+| `RESEND_API_KEY` | （Resend 使用時・ドメイン認証必須） |
+| `NUXT_PUBLIC_EMAIL_ENABLED` | `true`（Resend/SMTP 使用時） |
+| `RESEND_FROM_EMAIL` | （Resend ドメイン認証後） |
+| `SMTP_HOST` | `smtp.gmail.com`（Gmail SMTP 使用時） |
+| `SMTP_PORT` | `587` |
+| `SMTP_USER` | Gmail アドレス |
+| `SMTP_PASS` | Gmail アプリパスワード |
+| `SMTP_FROM` | `予約システム <xxx@gmail.com>` |
+| `BREVO_API_KEY` | （Brevo 使用時・推奨） |
+| `BREVO_SENDER_EMAIL` | 認証した送信元メール |
+| `BREVO_SENDER_NAME` | `予約システム` |
 
 4. **Save** をクリック
 5. **Deployments** タブ → 最新のデプロイの **⋯** → **Redeploy** で再デプロイ（環境変数を反映）

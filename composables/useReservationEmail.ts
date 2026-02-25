@@ -28,11 +28,11 @@ export function useReservationEmail() {
   const templateAdmin = config.public?.emailjsTemplateIdAdmin || ""
   const publicKey = config.public?.emailjsPublicKey || ""
   const adminEmail = config.public?.adminEmail || ""
+  const emailEnabled = config.public?.emailEnabled === true
 
   const isConfigured = !!(
-    serviceId &&
-    templateCustomer &&
-    publicKey
+    emailEnabled ||
+    (serviceId && templateCustomer && publicKey)
   )
 
   if (import.meta.dev && !isConfigured) {
@@ -122,29 +122,33 @@ export function useReservationEmail() {
     }
   }
 
-  /** サーバー経由で送信（推奨・届きやすい）。失敗時はクライアント送信にフォールバック */
+  /** クライアント（ブラウザ）優先で送信。サーバーは「Allow API」不要で届きやすい */
   async function sendReservationEmailsViaServer(
     params: ReservationEmailParams
   ): Promise<boolean> {
     if (!isConfigured) return false
+    // 1. まずブラウザから送信（EmailJS の制限が少ない）
+    if (serviceId && templateCustomer && publicKey) {
+      const [custOk, adminOk] = await Promise.all([
+        sendCustomerEmail(params),
+        templateAdmin ? sendAdminEmail(params) : Promise.resolve(true)
+      ])
+      if (custOk) {
+        if (import.meta.dev) console.log("[Dual-Manager] クライアント送信成功")
+        return true
+      }
+    }
+    // 2. 失敗時はサーバーAPIを試行
     try {
       await $fetch("/api/email/send-reservation", {
         method: "POST",
         body: params
       })
-      if (import.meta.dev) {
-        console.log("[Dual-Manager] サーバー経由でメール送信成功")
-      }
+      if (import.meta.dev) console.log("[Dual-Manager] サーバー送信成功")
       return true
     } catch (e) {
-      if (import.meta.dev) {
-        console.warn("[Dual-Manager] サーバー送信失敗、クライアント送信にフォールバック:", e)
-      }
-      const [custOk, adminOk] = await Promise.all([
-        sendCustomerEmail(params),
-        templateAdmin ? sendAdminEmail(params) : Promise.resolve(true)
-      ])
-      return custOk
+      if (import.meta.dev) console.warn("[Dual-Manager] サーバー送信失敗:", e)
+      return false
     }
   }
 

@@ -13,9 +13,14 @@
     "@emailjs/browser": "^4.4.1",
     "@emailjs/nodejs": "^5.0.2",
     "@supabase/supabase-js": "^2.49.1",
+    "nodemailer": "^8.0.1",
     "nuxt": "^4.3.1",
+    "resend": "^6.9.2",
     "stripe": "^20.3.1",
     "vue": "^3.5.27",
     "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^7.0.11"
   }
 }
