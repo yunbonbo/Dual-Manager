@@ -420,8 +420,10 @@
       <!-- ステップ4: 予約完了 -->
       <template v-else-if="currentStep === 4">
         <section class="block block--success">
-          <h2 class="block__title block__title--success">予約が確定しました！</h2>
-          <p class="success-message">ありがとうございます。</p>
+          <h2 class="block__title block__title--success">ご予約が完了しました</h2>
+          <p class="success-message">
+            メールへ予約詳細を送信しました。そちらより前日までのキャンセルも可能です。ご来店お待ちしております。
+          </p>
           <div v-if="lastReservation" class="success-detail">
             <p>{{ lastReservation.shopName }} / {{ lastReservation.menuName }}</p>
             <p>{{ lastReservation.datetime }}</p>

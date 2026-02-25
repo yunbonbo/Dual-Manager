@@ -45,7 +45,7 @@ EmailJS のテンプレート編集画面で、**各項目に以下をそのま�
 ```
 {{customer_name}} 様
 
-予約を受け付けました。
+予約のご確認です。
 
 ■ 予約内容
 店舗: {{shop_name}}
@@ -54,6 +54,7 @@ EmailJS のテンプレート編集画面で、**各項目に以下をそのま�
 所要時間: {{duration}}分
 料金: {{price}}円
 
+{{cancel_deadline_text}}
 キャンセルは以下のリンクから可能です：
 {{cancel_url}}
 
@@ -179,8 +180,9 @@ NUXT_PUBLIC_ADMIN_EMAIL="admin@example.com"
 | datetime       | 予約日時                           |
 | duration       | 所要時間（分）                     |
 | price          | 料金（円）                         |
-| cancel_url     | キャンセル用 URL（予約申込時のみ） |
-| status         | pending / confirmed / cancelled    |
+| cancel_url          | キャンセル用 URL（予約申込時のみ）       |
+| cancel_deadline_text| キャンセル期限の文言（デフォルト: 前日18時までキャンセル可能です） |
+| status              | pending / confirmed / cancelled          |
 
 ---
 
