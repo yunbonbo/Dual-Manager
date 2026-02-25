@@ -2,7 +2,9 @@
   <main class="success-page">
     <div class="success-card">
       <h1 class="success-title">予約とお支払いが完了しました</h1>
-      <p class="success-message">ありがとうございます。</p>
+      <p class="success-message">
+        ご予約が完了しました。メールへ予約詳細を送信しました。そちらより前日までのキャンセルも可能です。ご来店お待ちしております。
+      </p>
 
       <div v-if="loading" class="success-loading">読み込み中…</div>
       <div v-else-if="reservation" class="success-detail">

@@ -17,6 +17,7 @@ export type ReservationEmailParams = {
   duration: number
   price: number
   cancelUrl?: string
+  cancelDeadlineText?: string
   status?: "pending" | "confirmed" | "cancelled"
 }
 
@@ -69,6 +70,9 @@ export function useReservationEmail() {
         duration: String(params.duration ?? 0),
         price: String(params.price ?? 0),
         cancel_url: String(params.cancelUrl ?? "").trim(),
+        cancel_deadline_text:
+          String(params.cancelDeadlineText ?? "").trim() ||
+          "前日18時までキャンセル可能です",
         status: params.status || "pending"
       }
       const res = await emailjs.send(serviceId, templateId, templateParams, publicKey)
