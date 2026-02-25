@@ -265,7 +265,15 @@
               <button
                 type="button"
                 class="reservation-card__ics-btn"
-                title="カレンダーに追加"
+                title="Googleカレンダーに追加"
+                @click="handleAddToGoogleCalendar(reservation)"
+              >
+                Google
+              </button>
+              <button
+                type="button"
+                class="reservation-card__ics-btn"
+                title="カレンダーに追加（.ics）"
                 @click="handleDownloadIcs(reservation)"
               >
                 .ics
@@ -316,7 +324,7 @@ type Reservation = {
 const router = useRouter()
 const { supabase } = useSupabase()
 const { signOut } = useAuth()
-const { downloadIcs } = useIcsDownload()
+const { downloadIcs, openGoogleCalendar } = useIcsDownload()
 const {
   minHours,
   fetch: fetchMinHours,
@@ -519,6 +527,21 @@ const formatDateTime = (dateString: string) => {
   const weekday = weekdays[date.getDay()]
 
   return `${month}/${day} (${weekday}) ${hours}:${minutes}`
+}
+
+// Googleカレンダーに追加
+const handleAddToGoogleCalendar = (reservation: Reservation) => {
+  const startAt = new Date(reservation.start_at)
+  const endAt = new Date(reservation.end_at)
+  const shopName = getShopName(reservation.shop_id)
+  const menuName = getMenuName(reservation.menu_id)
+  openGoogleCalendar({
+    title: `予約: ${shopName} - ${menuName}`,
+    startAt,
+    endAt,
+    description: `${reservation.name} 様`,
+    location: shopName
+  })
 }
 
 // .ics ダウンロード（カレンダーに追加）

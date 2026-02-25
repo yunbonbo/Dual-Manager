@@ -122,9 +122,36 @@ export function useReservationEmail() {
     }
   }
 
+  /** サーバー経由で送信（推奨・届きやすい）。失敗時はクライアント送信にフォールバック */
+  async function sendReservationEmailsViaServer(
+    params: ReservationEmailParams
+  ): Promise<boolean> {
+    if (!isConfigured) return false
+    try {
+      await $fetch("/api/email/send-reservation", {
+        method: "POST",
+        body: params
+      })
+      if (import.meta.dev) {
+        console.log("[Dual-Manager] サーバー経由でメール送信成功")
+      }
+      return true
+    } catch (e) {
+      if (import.meta.dev) {
+        console.warn("[Dual-Manager] サーバー送信失敗、クライアント送信にフォールバック:", e)
+      }
+      const [custOk, adminOk] = await Promise.all([
+        sendCustomerEmail(params),
+        templateAdmin ? sendAdminEmail(params) : Promise.resolve(true)
+      ])
+      return custOk
+    }
+  }
+
   return {
     isConfigured,
     sendCustomerEmail,
-    sendAdminEmail
+    sendAdminEmail,
+    sendReservationEmailsViaServer
   }
 }

@@ -11,6 +11,24 @@ export type IcsEventParams = {
   location?: string
 }
 
+/** Date を Google Calendar URL 用 (YYYYMMDDTHHMMSSZ) UTC 形式に変換 */
+function toGoogleCalendarDate(d: Date): string {
+  return d.toISOString().slice(0, 19).replace(/[-:]/g, "") + "Z"
+}
+
+/** Google カレンダーにイベント追加用 URL を生成して開く */
+function openGoogleCalendar(params: IcsEventParams): void {
+  const base = "https://calendar.google.com/calendar/render"
+  const search = new URLSearchParams({
+    action: "TEMPLATE",
+    text: params.title,
+    dates: `${toGoogleCalendarDate(params.startAt)}/${toGoogleCalendarDate(params.endAt)}`,
+    ...(params.description && { details: params.description }),
+    ...(params.location && { location: params.location })
+  })
+  window.open(`${base}?${search.toString()}`, "_blank", "noopener,noreferrer")
+}
+
 /** Date を iCalendar 形式 (YYYYMMDDTHHMMSS) に変換 */
 function toIcsDate(d: Date): string {
   const pad = (n: number) => n.toString().padStart(2, "0")
@@ -66,5 +84,5 @@ export function useIcsDownload() {
     URL.revokeObjectURL(url)
   }
 
-  return { generateIcsContent, downloadIcs }
+  return { generateIcsContent, downloadIcs, openGoogleCalendar }
 }

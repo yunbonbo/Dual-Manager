@@ -118,9 +118,13 @@ NUXT_PUBLIC_EMAILJS_SERVICE_ID="your_service_id"
 NUXT_PUBLIC_EMAILJS_TEMPLATE_CUSTOMER="your_customer_template_id"
 NUXT_PUBLIC_EMAILJS_TEMPLATE_ADMIN="your_admin_template_id"
 NUXT_PUBLIC_ADMIN_EMAIL="admin@example.com"
+
+# サーバー送信用（メールが届きやすくなる・推奨）
+EMAILJS_PRIVATE_KEY="your_private_key"
 ```
 
 - **Public Key**: EmailJS ダッシュボード → **Account** → **API Keys**
+- **Private Key**: 同上。サーバーから送信する場合に必須。取得後、**Account → Security** で「Allow API requests from non-browser applications」を ON にすること
 - **Service ID**: 手順 2 でメモした値
 - **Template IDs**: 手順 3 でメモした値（顧客用・管理者用）
 - **Admin Email**: 管理者のメールアドレス
@@ -183,6 +187,18 @@ NUXT_PUBLIC_ADMIN_EMAIL="admin@example.com"
 | cancel_url          | キャンセル用 URL（予約申込時のみ）       |
 | cancel_deadline_text| キャンセル期限の文言（デフォルト: 前日18時までキャンセル可能です） |
 | status              | pending / confirmed / cancelled          |
+
+---
+
+## 6. サーバー送信を有効にする（メールが届きやすくなる）
+
+クライアント（ブラウザ）からの送信だと、タブを閉じるなどで失敗することがあります。サーバー送信に切り替えると確実です。
+
+1. EmailJS ダッシュボード → **Account** → **Security**
+2. **Allow API requests from non-browser applications** を **ON** にする
+3. **API Keys** で **Private Key** を取得（なければ Generate）
+4. `.env` に `EMAILJS_PRIVATE_KEY="..."` を追加
+5. `npm run dev` を再起動
 
 ---
 

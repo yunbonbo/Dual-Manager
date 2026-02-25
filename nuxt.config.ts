@@ -5,6 +5,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
+    /** EmailJS Private Key（サーバー送信用・Account > Security で取得） */
+    emailjsPrivateKey: process.env.EMAILJS_PRIVATE_KEY || "",
     public: {
       stripeEnabled: process.env.NUXT_PUBLIC_STRIPE_ENABLED === "true",
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,

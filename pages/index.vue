@@ -429,12 +429,22 @@
             <p>{{ lastReservation.datetime }}</p>
           </div>
           <div class="success-actions">
+            <p class="success-actions__hint">
+              開いた画面で「保存」を押すとカレンダーに追加されます
+            </p>
+            <button
+              type="button"
+              class="footer__button"
+              @click="handleAddToGoogleCalendar"
+            >
+              Googleカレンダーに追加
+            </button>
             <button
               type="button"
               class="footer__button footer__button--secondary"
               @click="handleDownloadIcs"
             >
-              カレンダーに追加（.ics）
+              その他のカレンダー用（.ics）
             </button>
             <button
               type="button"
@@ -469,7 +479,7 @@ type Menu = {
 }
 
 const { supabase } = useSupabase()
-const { downloadIcs } = useIcsDownload()
+const { downloadIcs, openGoogleCalendar } = useIcsDownload()
 const { minHours, fetch: fetchMinHours, getMinBookingTimestamp } =
   useMinHoursSetting()
 const { fetchForCalendarView: fetchClosedDates, isClosed } = useClosedDates()
@@ -1073,8 +1083,8 @@ const handleSubmitReservation = async () => {
       return
     }
 
-    // メール送信（EmailJS 設定時のみ）
-    const { sendCustomerEmail, sendAdminEmail, isConfigured } =
+    // メール送信（EmailJS 設定時のみ・サーバー経由で確実に届く）
+    const { sendReservationEmailsViaServer, isConfigured } =
       useReservationEmail()
     const shopName = selectedShopName.value
     const menuName = selectedMenuName.value
@@ -1090,7 +1100,7 @@ const handleSubmitReservation = async () => {
         typeof window !== "undefined"
           ? `${window.location.origin}/cancel?token=${cancelToken}`
           : ""
-      const params = {
+      await sendReservationEmailsViaServer({
         customerName: formData.value.name.trim(),
         customerEmail: formData.value.email.trim(),
         shopName,
@@ -1099,12 +1109,8 @@ const handleSubmitReservation = async () => {
         duration,
         price,
         cancelUrl,
-        status: "pending" as const
-      }
-      await Promise.all([
-        sendCustomerEmail(params),
-        sendAdminEmail(params)
-      ])
+        status: "pending"
+      })
     }
 
     // 予約完了画面（ステップ4）へ
@@ -1127,6 +1133,22 @@ const handleSubmitReservation = async () => {
   } finally {
     isSubmitting.value = false
   }
+}
+
+function handleAddToGoogleCalendar() {
+  const r = lastReservation.value
+  if (!r) return
+  const title = `予約: ${r.shopName} - ${r.menuName}`
+  const desc = r.cancelUrl
+    ? `キャンセルはこちら: ${r.cancelUrl}`
+    : undefined
+  openGoogleCalendar({
+    title,
+    startAt: r.startAt,
+    endAt: r.endAt,
+    description: desc,
+    location: r.shopName
+  })
 }
 
 function handleDownloadIcs() {
@@ -1746,5 +1768,11 @@ function handleBackToTop() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.success-actions__hint {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: -4px 0 0;
 }
 </style>

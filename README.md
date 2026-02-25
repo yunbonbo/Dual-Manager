@@ -196,6 +196,7 @@ NUXT_PUBLIC_EMAILJS_SERVICE_ID=""
 NUXT_PUBLIC_EMAILJS_TEMPLATE_CUSTOMER=""
 NUXT_PUBLIC_EMAILJS_TEMPLATE_ADMIN=""
 NUXT_PUBLIC_ADMIN_EMAIL=""
+EMAILJS_PRIVATE_KEY=""  # サーバー送信用（届きやすくなる）
 
 # オンライン決済（Stripe）※任意
 STRIPE_SECRET_KEY=""
@@ -252,10 +253,12 @@ npm run dev
 - **EmailJS**: 予約申込時（顧客確認・管理者通知）、確定・キャンセル時にメール送信
 - **ユーザー側キャンセル**: 予約確認メールのリンクから `/cancel?token=xxx` でキャンセル可能
 - セットアップ: [docs/EMAILJS_SETUP.md](docs/EMAILJS_SETUP.md)
+- **メールが届かない場合**: [docs/SETUP_EMAIL_AND_CALENDAR.md](docs/SETUP_EMAIL_AND_CALENDAR.md) を参照
 
 ## 📅 カレンダー連携
 
-- **.ics ダウンロード**: 予約完了後・ダッシュボードから Google カレンダー等にインポート可能
+- **Googleカレンダーに追加**: 1クリックで予約内容が入力された画面を開く（保存で追加）
+- **.ics ダウンロード**: Outlook・Apple カレンダー等にインポート可能
 - セットアップ: [docs/CALENDAR_SETUP.md](docs/CALENDAR_SETUP.md)
 
 ## 💳 オンライン決済（Stripe）

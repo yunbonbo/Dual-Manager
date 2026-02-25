@@ -72,6 +72,7 @@ git push -u origin main
 | `NUXT_PUBLIC_EMAILJS_TEMPLATE_CUSTOMER` | （設定している場合） |
 | `NUXT_PUBLIC_EMAILJS_TEMPLATE_ADMIN` | （設定している場合） |
 | `NUXT_PUBLIC_ADMIN_EMAIL` | （設定している場合） |
+| `EMAILJS_PRIVATE_KEY` | （メール送信用・設定している場合） |
 
 4. **Save** をクリック
 5. **Deployments** タブ → 最新のデプロイの **⋯** → **Redeploy** で再デプロイ（環境変数を反映）

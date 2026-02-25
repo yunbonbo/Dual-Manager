@@ -13,13 +13,24 @@
       </div>
 
       <div class="success-actions">
+        <p v-if="reservation" class="success-actions__hint">
+          開いた画面で「保存」を押すとカレンダーに追加されます
+        </p>
+        <button
+          v-if="reservation"
+          type="button"
+          class="success-btn success-btn--primary"
+          @click="handleAddToGoogleCalendar"
+        >
+          Googleカレンダーに追加
+        </button>
         <button
           v-if="reservation"
           type="button"
           class="success-btn success-btn--secondary"
           @click="handleDownloadIcs"
         >
-          カレンダーに追加（.ics）
+          その他のカレンダー用（.ics）
         </button>
         <NuxtLink to="/" class="success-btn success-btn--primary">
           トップに戻る
@@ -33,8 +44,8 @@
 definePageMeta({ layout: false })
 
 const route = useRoute()
-const { downloadIcs } = useIcsDownload()
-const { sendCustomerEmail, sendAdminEmail, isConfigured } = useReservationEmail()
+const { downloadIcs, openGoogleCalendar } = useIcsDownload()
+const { sendReservationEmailsViaServer, isConfigured } = useReservationEmail()
 
 const loading = ref(true)
 const emailSent = ref(false)
@@ -49,6 +60,17 @@ function formatDateTime(dateStr: string) {
   const d = new Date(dateStr)
   const weekdays = ["日", "月", "火", "水", "木", "金", "土"]
   return `${d.getMonth() + 1}/${d.getDate()} (${weekdays[d.getDay()]}) ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`
+}
+
+function handleAddToGoogleCalendar() {
+  const r = reservation.value
+  if (!r) return
+  openGoogleCalendar({
+    title: `予約: ${r.shop_name} - ${r.menu_name}`,
+    startAt: new Date(r.start_at),
+    endAt: new Date(r.end_at),
+    location: r.shop_name
+  })
 }
 
 function handleDownloadIcs() {
@@ -93,36 +115,32 @@ onMounted(async () => {
         end_at: data.reservation.end_at
       }
 
-      // メール送信（初回のみ）
+      // メール送信（初回のみ・サーバー経由で確実に届く）
       if (isConfigured && !emailSent.value && data.paid) {
         emailSent.value = true
-        const r = data.reservation
+        const r = data.reservation as typeof data.reservation & {
+          name?: string
+          email?: string
+          datetime?: string
+          duration?: number
+          price?: number
+          cancel_token?: string
+        }
         const cancelUrl =
-          typeof window !== "undefined" && r.cancel_token
+          typeof window !== "undefined" && r?.cancel_token
             ? `${window.location.origin}/cancel?token=${r.cancel_token}`
             : ""
-        await Promise.all([
-          sendCustomerEmail({
-            customerName: r.name,
-            customerEmail: r.email,
-            shopName: r.shop_name,
-            menuName: r.menu_name,
-            datetime: r.datetime,
-            duration: r.duration,
-            price: r.price,
-            cancelUrl,
-            status: "pending"
-          }),
-          sendAdminEmail({
-            customerName: r.name,
-            customerEmail: r.email,
-            shopName: r.shop_name,
-            menuName: r.menu_name,
-            datetime: r.datetime,
-            duration: r.duration,
-            price: r.price
-          })
-        ])
+        await sendReservationEmailsViaServer({
+          customerName: r?.name ?? "",
+          customerEmail: r?.email ?? "",
+          shopName: r?.shop_name ?? "",
+          menuName: r?.menu_name ?? "",
+          datetime: r?.datetime ?? "",
+          duration: r?.duration ?? 0,
+          price: r?.price ?? 0,
+          cancelUrl,
+          status: "pending"
+        })
       }
     }
   } catch (e) {
@@ -181,6 +199,12 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.success-actions__hint {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: -4px 0 0;
 }
 
 .success-btn {
