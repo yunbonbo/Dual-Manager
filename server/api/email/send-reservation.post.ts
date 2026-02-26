@@ -1,7 +1,6 @@
 /**
  * 予約完了メールをサーバーから送信（顧客・管理者双方）
- * 既存サービス優先: EmailJS > Gmail SMTP > Resend
- * 失敗時は次の方式を試す（新規登録不要）
+ * 優先順位: Brevo > Gmail SMTP > Resend > EmailJS（課金不要の順）
  */
 
 interface ReservationEmailBody {
@@ -146,33 +145,40 @@ export default defineEventHandler(async (event) => {
 
   const providers: Array<{ name: string; try: () => Promise<boolean> }> = []
 
-  // 1. EmailJS（既存アカウント・新規登録不要）
-  if (serviceId && templateCustomer && publicKey) {
+  // 1. Brevo（無料300通/日・課金不要）
+  if (brevoApiKey && brevoSenderEmail) {
     providers.push({
-      name: "emailjs",
+      name: "brevo",
       try: async () => {
-        const { default: emailjs } = await import("@emailjs/nodejs")
-        const opts = { publicKey, ...(privateKey && { privateKey }) }
-        await emailjs.send(serviceId, templateCustomer, customerParams, opts)
-        if (templateAdmin && adminEmail) {
-          const adminParams = {
-            to_email: adminEmail,
-            customer_name: customerParams.customer_name,
-            customer_email: customerEmail || "-",
-            shop_name: customerParams.shop_name,
-            menu_name: customerParams.menu_name,
-            datetime: customerParams.datetime,
-            duration: customerParams.duration,
-            price: customerParams.price
-          }
-          await emailjs.send(serviceId, templateAdmin, adminParams, opts)
+        const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: { "api-key": brevoApiKey, "content-type": "application/json" },
+          body: JSON.stringify({
+            sender: { name: brevoSenderName, email: brevoSenderEmail },
+            to: [{ email: customerEmail }],
+            subject: "【予約確認】ご予約のご案内",
+            htmlContent: buildCustomerEmailHtml(body)
+          })
+        })
+        if (!res.ok) throw new Error(await res.text())
+        if (adminEmail) {
+          await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: { "api-key": brevoApiKey, "content-type": "application/json" },
+            body: JSON.stringify({
+              sender: { name: brevoSenderName, email: brevoSenderEmail },
+              to: [{ email: adminEmail }],
+              subject: "【新規予約】予約がありました",
+              htmlContent: buildAdminEmailHtml(body)
+            })
+          })
         }
         return true
       }
     })
   }
 
-  // 2. Gmail SMTP（既存 Gmail・新規登録不要）
+  // 2. Gmail SMTP（既存 Gmail・課金不要）
   if (smtpUser && smtpPass) {
     providers.push({
       name: "smtp",
@@ -233,33 +239,26 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // 4. Brevo（新規登録が必要）
-  if (brevoApiKey && brevoSenderEmail) {
+  // 4. EmailJS（課金が発生する場合あり・最後のフォールバック）
+  if (serviceId && templateCustomer && publicKey) {
     providers.push({
-      name: "brevo",
+      name: "emailjs",
       try: async () => {
-        const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: { "api-key": brevoApiKey, "content-type": "application/json" },
-          body: JSON.stringify({
-            sender: { name: brevoSenderName, email: brevoSenderEmail },
-            to: [{ email: customerEmail }],
-            subject: "【予約確認】ご予約のご案内",
-            htmlContent: buildCustomerEmailHtml(body)
-          })
-        })
-        if (!res.ok) throw new Error(await res.text())
-        if (adminEmail) {
-          await fetch("https://api.brevo.com/v3/smtp/email", {
-            method: "POST",
-            headers: { "api-key": brevoApiKey, "content-type": "application/json" },
-            body: JSON.stringify({
-              sender: { name: brevoSenderName, email: brevoSenderEmail },
-              to: [{ email: adminEmail }],
-              subject: "【新規予約】予約がありました",
-              htmlContent: buildAdminEmailHtml(body)
-            })
-          })
+        const { default: emailjs } = await import("@emailjs/nodejs")
+        const opts = { publicKey, ...(privateKey && { privateKey }) }
+        await emailjs.send(serviceId, templateCustomer, customerParams, opts)
+        if (templateAdmin && adminEmail) {
+          const adminParams = {
+            to_email: adminEmail,
+            customer_name: customerParams.customer_name,
+            customer_email: customerEmail || "-",
+            shop_name: customerParams.shop_name,
+            menu_name: customerParams.menu_name,
+            datetime: customerParams.datetime,
+            duration: customerParams.duration,
+            price: customerParams.price
+          }
+          await emailjs.send(serviceId, templateAdmin, adminParams, opts)
         }
         return true
       }
@@ -269,7 +268,7 @@ export default defineEventHandler(async (event) => {
   if (providers.length === 0) {
     throw createError({
       statusCode: 503,
-      statusMessage: "メール送信の設定がありません。EmailJS、SMTP、Resend のいずれかを設定してください。"
+      statusMessage: "メール送信の設定がありません。Brevo または Gmail SMTP の設定を推奨（docs/BREVO_SETUP.md）"
     })
   }
 
@@ -286,6 +285,6 @@ export default defineEventHandler(async (event) => {
   throw createError({
     statusCode: 502,
     statusMessage:
-      "すべてのメール送信方式が失敗しました。EmailJS の「Account > Security」で「Allow API requests」を ON にしてください。"
+      "すべてのメール送信方式が失敗しました。Brevo の送信元認証、または Gmail のアプリパスワードを確認してください（docs/BREVO_SETUP.md、docs/SMTP_SETUP.md）"
   })
 })

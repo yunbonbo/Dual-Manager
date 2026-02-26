@@ -14,21 +14,30 @@
 
 ## 1. メールが届かない場合
 
-### 新規登録不要: 既存の EmailJS を使う
+### 推奨: Brevo（課金不要・約5分で設定）
 
-すでに EmailJS を設定している場合は、**ブラウザから直接送信**するようにしました（サーバー制限の影響を受けにくい）。
+**Brevo** は無料で 300通/日 送信でき、クレジットカード登録不要です。
 
-**確認してほしいこと：**
+**最良の手順：**
 
-1. **テンプレートの To Email** が `{{to_email}}` になっているか（固定アドレスだと届かない）
-2. **Email Services** で Gmail 等が正しく接続されているか
-3. 迷惑メールフォルダを確認する
-
-**動作確認**: 予約完了画面で F12 → Console に `[Dual-Manager] クライアント送信成功` が出ていれば送信済みです。
+1. [docs/BREVO_SETUP.md](BREVO_SETUP.md) に従って Brevo アカウント作成
+2. 送信元メールアドレスを認証（認証メールのリンクをクリック）
+3. API キーを取得して `.env` に設定
+4. Vercel の場合は **Settings → Environment Variables** に同じ変数を追加
+5. **Redeploy** を実行
+6. `/email-test` でテスト送信
 
 ---
 
-### 代替: EmailJS を使う
+### 代替: Gmail SMTP（既存 Gmail で届く）
+
+Gmail をお持ちなら、**アプリパスワード** だけで設定できます。ドメイン認証は不要です。
+
+**手順：** [docs/SMTP_SETUP.md](SMTP_SETUP.md) を参照
+
+---
+
+### 代替: EmailJS（課金が発生する場合あり）
 
 ### 1-1. EmailJS アカウント作成（5分）
 
@@ -228,11 +237,11 @@ Google カレンダーに **完全自動** で追加するには、Google Calend
 
 | 確認項目 | 対処 |
 |----------|------|
-| `.env` の値が正しいか | コピペ時の余分なスペース・改行を削除 |
-| `EMAILJS_PRIVATE_KEY` を設定したか | サーバー送信には必須 |
-| API リクエストを有効化したか | Account → Security で ON |
+| Brevo の送信元認証 | 認証メール内のリンクをクリックしたか確認 |
+| Gmail のアプリパスワード | 通常パスワードではなく 16 文字のアプリパスワードを使用 |
+| Vercel の環境変数 | 設定後は **Redeploy** が必要 |
 | 迷惑メールフォルダ | Gmail の「プロモーション」「迷惑メール」を確認 |
-| EmailJS の送信制限 | 無料プランは月 200 通まで |
+| テスト送信 | `/email-test` で動作確認 |
 
 ### カレンダーボタンが表示されない
 
@@ -241,4 +250,6 @@ Google カレンダーに **完全自動** で追加するには、Google Calend
 
 ### その他
 
-- 詳細な EmailJS 設定は [docs/EMAILJS_SETUP.md](EMAILJS_SETUP.md) を参照
+- **Brevo**: [docs/BREVO_SETUP.md](BREVO_SETUP.md)
+- **Gmail SMTP**: [docs/SMTP_SETUP.md](SMTP_SETUP.md)
+- **EmailJS**: [docs/EMAILJS_SETUP.md](EMAILJS_SETUP.md)（課金が発生する場合あり）

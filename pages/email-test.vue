@@ -30,7 +30,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: false })
 
-const { sendCustomerEmail, sendAdminEmail, isConfigured } = useReservationEmail()
+const { sendReservationEmailsViaServer, isConfigured } = useReservationEmail()
 const testEmail = ref("")
 const sending = ref(false)
 const result = ref<{ ok: boolean; message: string } | null>(null)
@@ -40,7 +40,7 @@ async function handleSend() {
     sending.value = true
     result.value = null
     try {
-      const ok = await sendCustomerEmail({
+      const res = await sendReservationEmailsViaServer({
         customerName: "テスト",
         customerEmail: testEmail.value,
         shopName: "テスト店舗",
@@ -49,9 +49,9 @@ async function handleSend() {
         duration: 30,
         price: 1000
       })
-      result.value = ok
+      result.value = res.ok
         ? { ok: true, message: "送信しました。迷惑メールフォルダも確認してください。" }
-        : { ok: false, message: "送信に失敗しました。" }
+        : { ok: false, message: res.message ?? "送信に失敗しました。" }
     } catch (e) {
       result.value = { ok: false, message: `エラー: ${String(e)}` }
     } finally {

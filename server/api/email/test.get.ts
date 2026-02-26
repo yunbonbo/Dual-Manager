@@ -19,14 +19,14 @@ export default defineEventHandler(async (event) => {
     emailEnabled: config.public.emailEnabled === true
   }
 
-  const activeProvider = status.emailjs
-    ? "emailjs"
+  const activeProvider = status.brevo
+    ? "brevo"
     : status.smtp
       ? "smtp"
       : status.resend
         ? "resend"
-        : status.brevo
-          ? "brevo"
+        : status.emailjs
+          ? "emailjs"
           : "none"
 
   if (!testTo || !testTo.includes("@")) {
@@ -36,43 +36,39 @@ export default defineEventHandler(async (event) => {
       status,
       hint:
         activeProvider === "none"
-          ? "EmailJS を設定してください（新規登録不要: docs/EMAILJS_SETUP.md）。Account > Security で「Allow API requests」を ON に。"
+          ? "Brevo（課金不要・推奨）または Gmail SMTP を設定: docs/BREVO_SETUP.md"
           : undefined
     }
   }
 
-  // テスト送信（優先順位: EmailJS > SMTP > Resend > Brevo）
+  // テスト送信（優先順位: Brevo > SMTP > Resend > EmailJS）
   const customerHtml = `
 <!DOCTYPE html>
 <html><body><p>これはテストメールです。メール送信は正常に動作しています。</p></body></html>
 `
   try {
-    if (status.emailjs) {
-      const { default: emailjs } = await import("@emailjs/nodejs")
-      const opts = {
-        publicKey: config.public.emailjsPublicKey as string,
-        ...((config.emailjsPrivateKey as string) && {
-          privateKey: config.emailjsPrivateKey as string
-        })
-      }
-      await emailjs.send(
-        config.public.emailjsServiceId as string,
-        config.public.emailjsTemplateIdCustomer as string,
-        {
-          to_email: testTo,
-          customer_name: "テスト",
-          shop_name: "-",
-          menu_name: "-",
-          datetime: "-",
-          duration: "0",
-          price: "0",
-          cancel_url: "",
-          cancel_deadline_text: "前日18時までキャンセル可能です",
-          status: "pending"
+    if (status.brevo) {
+      const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": config.brevoApiKey as string,
+          "content-type": "application/json"
         },
-        opts
-      )
-      return { ok: true, provider: "emailjs", message: `${testTo} にテストメールを送信しました。迷惑メールも確認してください。` }
+        body: JSON.stringify({
+          sender: {
+            name: (config.brevoSenderName as string) || "予約システム",
+            email: config.brevoSenderEmail as string
+          },
+          to: [{ email: testTo }],
+          subject: "【テスト】メール送信確認",
+          htmlContent: customerHtml
+        })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { error: "Brevo 送信失敗", status: res.status, detail: err }
+      }
+      return { ok: true, provider: "brevo", message: `${testTo} にテストメールを送信しました。` }
     }
 
     if (status.smtp) {
@@ -109,28 +105,32 @@ export default defineEventHandler(async (event) => {
       return { ok: true, provider: "resend", message: `${testTo} にテストメールを送信しました。` }
     }
 
-    if (status.brevo) {
-      const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: {
-          "api-key": config.brevoApiKey as string,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          sender: {
-            name: (config.brevoSenderName as string) || "予約システム",
-            email: config.brevoSenderEmail as string
-          },
-          to: [{ email: testTo }],
-          subject: "【テスト】メール送信確認",
-          htmlContent: customerHtml
+    if (status.emailjs) {
+      const { default: emailjs } = await import("@emailjs/nodejs")
+      const opts = {
+        publicKey: config.public.emailjsPublicKey as string,
+        ...((config.emailjsPrivateKey as string) && {
+          privateKey: config.emailjsPrivateKey as string
         })
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        return { error: "Brevo 送信失敗", status: res.status, detail: err }
       }
-      return { ok: true, provider: "brevo", message: `${testTo} にテストメールを送信しました。` }
+      await emailjs.send(
+        config.public.emailjsServiceId as string,
+        config.public.emailjsTemplateIdCustomer as string,
+        {
+          to_email: testTo,
+          customer_name: "テスト",
+          shop_name: "-",
+          menu_name: "-",
+          datetime: "-",
+          duration: "0",
+          price: "0",
+          cancel_url: "",
+          cancel_deadline_text: "前日18時までキャンセル可能です",
+          status: "pending"
+        },
+        opts
+      )
+      return { ok: true, provider: "emailjs", message: `${testTo} にテストメールを送信しました。迷惑メールも確認してください。` }
     }
 
     return { error: "メール送信の設定がありません。", status }
